@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Super Car Avoid Game</title>
+<meta name="viewport" content="width=400, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  body { background:#222; color: #fff; font-family: Arial, sans-serif; text-align:center; margin:0;}
+  canvas { background: #333; display:block; margin:15px auto; border-radius: 20px;}
+  #ui { margin-top:10px; }
+  #score { font-size: 24px; }
+  #highscore { font-size:18px;}
+  #restartBtn { padding:10px 20px; font-size:20px; margin-top:10px; border-radius: 7px; border:none;}
+</style>
+</head>
+<body>
+<h1>Super Car Avoid Game</h1>
+<div id="ui">
+  <div id="score">Score: 0</div>
+  <div id="highscore">High Score: 0</div>
+  <button id="restartBtn" style="display:none;">Restart</button>
+</div>
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+<audio id="crashSound">
+  <source src="https://cdn.pixabay.com/audio/2022/03/15/audio_116b9ba2e1.mp3" type="audio/mp3">
+</audio>
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const scoreDiv = document.getElementById("score");
+const highScoreDiv = document.getElementById("highscore");
+const restartBtn = document.getElementById("restartBtn");
+const crashSound = document.getElementById("crashSound");
+let carImg = null, obsImg = null;
+
+const car = { x: 180, y: 500, width: 40, height: 80, speed: 7 };
+let obstacles = [];
+let score = 0, highscore = 0;
+let gameOver = false;
+let frames = 0;
+
+// Load HighScore
+highscore = +localStorage.getItem("car_game_highscore") || 0;
+highScoreDiv.innerText = "High Score: " + highscore;
+
+// Car and obs image
+function loadAssets(cb) {
+  carImg = new Image();
+  obsImg = new Image();
+  carImg.src = "https://cdn.pixabay.com/photo/2013/07/12/17/00/car-150269_1280.png";
+  obsImg.src = "https://cdn.pixabay.com/photo/2013/07/12/13/58/car-149299_1280.png";
+  let loaded = 0;
+  carImg.onload = obsImg.onload = function() {
+    loaded++;
+    if (loaded == 2) cb();
+  }
+}
+function drawCar() {
+  if (carImg) ctx.drawImage(carImg, car.x, car.y, car.width, car.height);
+  else {
+    ctx.fillStyle = "cyan";
+    ctx.fillRect(car.x, car.y, car.width, car.height);
+  }
+}
+function drawObstacles() {
+  obstacles.forEach(o => {
+    if(obsImg) ctx.drawImage(obsImg, o.x, o.y, o.width, o.height);
+    else {
+      ctx.fillStyle = o.color;
+      ctx.fillRect(o.x, o.y, o.width, o.height);
+    }
+  });
+}
+function drawScore() {
+  scoreDiv.innerText = "Score: " + score;
+  highScoreDiv.innerText = "High Score: " + highscore;
+}
+function addObstacle() {
+  const obsWidth = 40;
+  const obsX = Math.floor(Math.random() * (canvas.width - obsWidth));
+  const colors = ["red","orange","yellow","green"];
+  obstacles.push({
+    x: obsX, 
+    y: -90, 
+    width: obsWidth, 
+    height: 80, 
+    speed: 5 + score/500, // Thoda fast hoga jaise jaise score badhe
+    color: colors[Math.floor(Math.random()*colors.length)]
+  });
+}
+function updateObstacles() {
+  obstacles.forEach(o => { o.y += o.speed; });
+  obstacles = obstacles.filter(o => o.y < canvas.height + o.height);
+}
+
+function checkCollision() {
+  for (let o of obstacles) {
+    if (car.x < o.x + o.width &&
+      car.x + car.width > o.x &&
+      car.y < o.y + o.height &&
+      car.y + car.height > o.y) {
+      crashSound.currentTime = 0; crashSound.play();
+      gameOver = true;
+      if (score > highscore) {
+        highscore = score;
+        localStorage.setItem("car_game_highscore", highscore);
+      }
+      return;
+    }
+  }
+}
+
+// CONTROLS
+let keys = {}, touchX = null;
+document.addEventListener('keydown', e => { keys[e.key] = true; });
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+canvas.addEventListener('touchstart', e => {
+  touchX = e.touches[0].clientX - canvas.getBoundingClientRect().left;
+});
+canvas.addEventListener('touchmove', e => {
+  let nx = e.touches[0].clientX - canvas.getBoundingClientRect().left;
+  car.x = nx - car.width/2;
+  if (car.x < 0) car.x = 0;
+  if (car.x > canvas.width - car.width) car.x = canvas.width - car.width;
+});
+canvas.addEventListener('touchend', e => { touchX = null; });
+
+// Restart button
+restartBtn.onclick = () => {
+  score = 0; obstacles = []; gameOver = false; car.x = 180; frames=0;
+  restartBtn.style.display = 'none';
+  gameLoop();
+};
+
+function gameLoop() {
+  if(gameOver) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#fff";
+    ctx.font = "36px Arial";
+    ctx.fillText("Game Over!", 110, 300);
+    ctx.font = "24px Arial";
+    ctx.fillText("Score: " + score, 140, 350);
+    ctx.fillText((score>=highscore)?"🎉 New High Score!":"High Score: "+highscore, 90, 410);
+    restartBtn.style.display = 'inline-block';
+    return;
+  }
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Move car
+  if (keys["ArrowLeft"] && car.x > 0) car.x -= car.speed;
+  if (keys["ArrowRight"] && car.x + car.width < canvas.width) car.x += car.speed;
+  // Add more obstacles
+  if (frames % 60 === 0) addObstacle();
+  updateObstacles();
+  drawCar();
+  drawObstacles();
+  drawScore();
+  checkCollision();
+  // Score increase
+  score++;
+  frames++;
+  requestAnimationFrame(gameLoop);
+}
+
+// Start
+loadAssets(gameLoop);
+</script>
+</body>
+</html>
